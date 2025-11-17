@@ -137,7 +137,7 @@ class PointsAPI(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
 
-        # health-check для Render / UptimeRobot
+        # 1) health-check для Render + UptimeRobot
         if parsed.path == "/":
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -145,7 +145,7 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.wfile.write(b"Bot is running")
             return
 
-        # наш API: /api/get_points?user_id=...
+        # 2) твій існуючий API
         if parsed.path == "/api/get_points":
             params = parse_qs(parsed.query)
             user_id = int(params.get("user_id", [0])[0])
@@ -160,7 +160,6 @@ class PointsAPI(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
-
 
 
 def run_api():
