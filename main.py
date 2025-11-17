@@ -26,7 +26,7 @@ import threading
 from urllib.parse import urlparse, parse_qs
 
 
-BOT_TOKEN = "8221786106:AAFa5dQNEeHM-lDbWJKObBzu6SHsZujUtPM"
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 WEBAPP_URL = "https://dreamx-webapp.onrender.com"
 
 
