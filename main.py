@@ -134,6 +134,12 @@ async def webapp_data_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         # await message.reply_text(f"Зараховано +{delta} бал(и). Тепер у тебе {points}.")
 
 class PointsAPI(BaseHTTPRequestHandler):
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+    
     def do_GET(self):
         parsed = urlparse(self.path)
 
