@@ -103,6 +103,29 @@ async def webapp_data_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         points = get_points_pg(user.id)
 
         print(f"✅ WIN від {user.id}, +{delta}, тепер {points} балів")
+                # 🔹 НОВЕ: надсилаємо оновлену кнопку з актуальними балами
+        url_with_points = f"{WEBAPP_URL}?points={points}"
+
+        keyboard = [
+            [
+                KeyboardButton(
+                    text="🚀 Open DreamX App",
+                    web_app=WebAppInfo(url=url_with_points),
+                )
+            ]
+        ]
+
+        reply_kb = ReplyKeyboardMarkup(
+            keyboard,
+            resize_keyboard=True,
+            one_time_keyboard=False,
+        )
+
+        await message.reply_text(
+            f"Зараховано +{delta} балів. Тепер у тебе {points} 🔥\n"
+            f"Натисни кнопку нижче, щоб знову відкрити DreamX.",
+            reply_markup=reply_kb,
+        )
 
         # відповідати не обов'язково, щоб не спамити в чат
         # але якщо хочеш тестово:
