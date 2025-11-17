@@ -1,5 +1,7 @@
 import logging
 import json
+import os  
+
 
 from telegram import (
     Update,
@@ -135,12 +137,20 @@ class PointsAPI(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
 
+        # health-check для Render / UptimeRobot
+        if parsed.path == "/":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"Bot is running")
+            return
+
+        # наш API: /api/get_points?user_id=...
         if parsed.path == "/api/get_points":
             params = parse_qs(parsed.query)
             user_id = int(params.get("user_id", [0])[0])
 
             points = get_points_pg(user_id)
-
             result = json.dumps({"points": points}).encode("utf-8")
 
             self.send_response(200)
@@ -152,36 +162,30 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.end_headers()
 
 
+
+def run_api():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), PointsAPI)
+    print(f"API server running on port {port}...")
+    server.serve_forever()
+
+
 if __name__ == "__main__":
     # 1. Створюємо таблицю, якщо її ще нема
     init_pg_db()
 
-    # 2. Створюємо застосунок
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    # 2. Створюємо застосунок Telegram
+    tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     # 3. Реєструємо команди
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("mypoints", mypoints))
-    # ловимо дані з WebApp (sendData)
-    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_data_handler))
+    tg_app.add_handler(CommandHandler("start", start))
+    tg_app.add_handler(CommandHandler("mypoints", mypoints))
+    tg_app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_data_handler))
 
+    # 4. Запускаємо HTTP API в окремому потоці
+    api_thread = threading.Thread(target=run_api, daemon=True)
+    api_thread.start()
 
-    def run_api():
-        server = HTTPServer(("0.0.0.0", 8080), PointsAPI)
-        print("API server running on port 8080...")
-        server.serve_forever()
-
-
-    threading.Thread(target=run_api, daemon=True).start()
-
-    # 4. Запускаємо бота
+    # 5. Запускаємо бота
     print("Bot is running (NEW VERSION)...")
-    app.run_polling()
-
-from flask import Flask
-
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "Bot is running!", 200
+    tg_app.run_polling()
