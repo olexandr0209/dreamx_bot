@@ -77,61 +77,7 @@ async def mypoints(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"У тебе зараз {points} балів 🔥"
     )
 
-async def webapp_data_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Обробка даних, які приходять з WebApp через Telegram.WebApp.sendData(...)
-    """
-    message = update.effective_message
-    user = update.effective_user
 
-    if not message or not message.web_app_data:
-        return
-
-    raw_data = message.web_app_data.data
-    print("RAW WEBAPP DATA:", raw_data)
-
-    try:
-        payload = json.loads(raw_data)
-    except json.JSONDecodeError:
-        print("⚠️ Не зміг розпарсити JSON з WebApp")
-        return
-
-    event_type = payload.get("type")
-    if event_type == "WIN":
-        delta = int(payload.get("delta", 1))
-
-        # додаємо бали гравцеві в БД
-        add_points_pg(user.id, delta)
-        points = get_points_pg(user.id)
-
-        print(f"✅ WIN від {user.id}, +{delta}, тепер {points} балів")
-                # 🔹 НОВЕ: надсилаємо оновлену кнопку з актуальними балами
-        url_with_points = f"{WEBAPP_URL}?points={points}"
-
-        keyboard = [
-            [
-                KeyboardButton(
-                    text="🚀 Open DreamX App",
-                    web_app=WebAppInfo(url=url_with_points),
-                )
-            ]
-        ]
-
-        reply_kb = ReplyKeyboardMarkup(
-            keyboard,
-            resize_keyboard=True,
-            one_time_keyboard=False,
-        )
-
-        await message.reply_text(
-            f"Зараховано +{delta} балів. Тепер у тебе {points} 🔥\n"
-            f"Натисни кнопку нижче, щоб знову відкрити DreamX.",
-            reply_markup=reply_kb,
-        )
-
-        # відповідати не обов'язково, щоб не спамити в чат
-        # але якщо хочеш тестово:
-        # await message.reply_text(f"Зараховано +{delta} бал(и). Тепер у тебе {points}.")
 
 class PointsAPI(BaseHTTPRequestHandler):
 
@@ -223,7 +169,7 @@ if __name__ == "__main__":
     # 3. Реєструємо команди
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(CommandHandler("mypoints", mypoints))
-    tg_app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_data_handler))
+    
 
     # 4. Запускаємо HTTP API в окремому потоці
     api_thread = threading.Thread(target=run_api, daemon=True)
