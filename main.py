@@ -143,7 +143,6 @@ class PointsAPI(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
 
-        # 1) health-check для Render + UptimeRobot
         if parsed.path == "/":
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -151,13 +150,53 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.wfile.write(b"Bot is running")
             return
 
-        # 2) твій існуючий API
         if parsed.path == "/api/get_points":
             params = parse_qs(parsed.query)
             user_id = int(params.get("user_id", [0])[0])
 
             points = get_points_pg(user_id)
             result = json.dumps({"points": points}).encode("utf-8")
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(result)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+
+        if parsed.path == "/api/add_points":
+            # читаємо тіло запиту
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"error":"invalid_json"}')
+                return
+
+            user_id = int(payload.get("user_id", 0))
+            delta = int(payload.get("delta", 0))
+
+            if not user_id or delta == 0:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"error":"bad_parameters"}')
+                return
+
+            # ✅ додаємо бали в БД
+            add_points_pg(user_id, delta)
+            points = get_points_pg(user_id)
+
+            result = json.dumps({"ok": True, "points": points}).encode("utf-8")
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
