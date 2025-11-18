@@ -84,18 +84,30 @@ class PointsAPI(BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-    
+
+    # ✅ ВАЖЛИВО: відповідаємо на OPTIONS (preflight CORS)
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
     def do_GET(self):
         parsed = urlparse(self.path)
 
+        # health-check для Render
         if parsed.path == "/":
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(b"Bot is running")
             return
 
+        # API: отримати бали
         if parsed.path == "/api/get_points":
             params = parse_qs(parsed.query)
             user_id = int(params.get("user_id", [0])[0])
@@ -105,10 +117,12 @@ class PointsAPI(BaseHTTPRequestHandler):
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(result)
         else:
             self.send_response(404)
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
 
     def do_POST(self):
@@ -123,6 +137,7 @@ class PointsAPI(BaseHTTPRequestHandler):
             except json.JSONDecodeError:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(b'{"error":"invalid_json"}')
                 return
@@ -133,10 +148,12 @@ class PointsAPI(BaseHTTPRequestHandler):
             if not user_id or delta == 0:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(b'{"error":"bad_parameters"}')
                 return
 
+            # ✅ оновлюємо БД
             add_points_pg(user_id, delta)
             points = get_points_pg(user_id)
 
@@ -144,12 +161,13 @@ class PointsAPI(BaseHTTPRequestHandler):
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(result)
         else:
             self.send_response(404)
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-
 
 
 def run_api():
