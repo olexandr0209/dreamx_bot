@@ -166,43 +166,43 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
-    parsed = urlparse(self.path)
+        parsed = urlparse(self.path)
 
-    if parsed.path == "/api/add_points":
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length)
+        if parsed.path == "/api/add_points":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
 
-        try:
-            payload = json.loads(body.decode("utf-8"))
-        except json.JSONDecodeError:
-            self.send_response(400)
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"error":"invalid_json"}')
+                return
+
+            user_id = int(payload.get("user_id", 0))
+            delta = int(payload.get("delta", 0))
+
+            if not user_id or delta == 0:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"error":"bad_parameters"}')
+                return
+
+            add_points_pg(user_id, delta)
+            points = get_points_pg(user_id)
+
+            result = json.dumps({"ok": True, "points": points}).encode("utf-8")
+
+            self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(b'{"error":"invalid_json"}')
-            return
-
-        user_id = int(payload.get("user_id", 0))
-        delta = int(payload.get("delta", 0))
-
-        if not user_id or delta == 0:
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
+            self.wfile.write(result)
+        else:
+            self.send_response(404)
             self.end_headers()
-            self.wfile.write(b'{"error":"bad_parameters"}')
-            return
-
-        add_points_pg(user_id, delta)
-        points = get_points_pg(user_id)
-
-        result = json.dumps({"ok": True, "points": points}).encode("utf-8")
-
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(result)
-    else:
-        self.send_response(404)
-        self.end_headers()
 
 
 
