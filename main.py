@@ -42,8 +42,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     points = get_or_create_pg(user.id)
 
-    # Додаємо параметр ?points=ХХ
-    url_with_points = f"{WEBAPP_URL}?points={points}"
+    # Тепер передаємо І user_id, І points
+    url_with_points = f"{WEBAPP_URL}?user_id={user.id}&points={points}"
+
 
     # 🔹 клавіатура з ЗВИЧАЙНОЮ кнопкою (KeyboardButton), не inline
     keyboard = [
