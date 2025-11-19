@@ -25,10 +25,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 from urllib.parse import urlparse, parse_qs
 
-from config import BOT_TOKEN, DATABASE_URL
-
-WEBAPP_URL = "https://dreamx-webapp.onrender.com"
-
+from config import BOT_TOKEN, DATABASE_URL, WEBAPP_URL
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
