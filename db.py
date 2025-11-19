@@ -5,9 +5,9 @@ import psycopg2
 from dotenv import load_dotenv
 import sqlite3
 from contextlib import closing
-load_dotenv()
+from config import DATABASE_URL
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+load_dotenv()
 
 DB_NAME = "players.db"
 
