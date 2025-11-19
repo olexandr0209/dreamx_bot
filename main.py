@@ -27,8 +27,6 @@ from urllib.parse import urlparse, parse_qs
 
 from config import BOT_TOKEN, DATABASE_URL
 
-
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
 WEBAPP_URL = "https://dreamx-webapp.onrender.com"
 
 
