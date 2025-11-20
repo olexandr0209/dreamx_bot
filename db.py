@@ -114,28 +114,29 @@ def get_or_create_pg(user_id: int) -> int:
     return 0
 
 def get_points_pg(user_id: int) -> int:
-    conn = connect_db()
-    cur = conn.cursor()
+    # Використовуємо get_or_create_pg:
+    #  - повертає бали, якщо рядок існує
+    #  - створює нового гравця, якщо нема
+    return get_or_create_pg(user_id)
 
-    cur.execute("SELECT points FROM players WHERE user_id = %s", (user_id,))
-    row = cur.fetchone()
-
-    cur.close()
-    conn.close()
-
-    return row[0] if row else 0
 
 def add_points_pg(user_id: int, amount: int):
     conn = connect_db()
     cur = conn.cursor()
 
     cur.execute(
-        "UPDATE players SET points = points + %s WHERE user_id = %s",
-        (amount, user_id)
+        """
+        INSERT INTO players (user_id, points)
+        VALUES (%s, %s)
+        ON CONFLICT (user_id)
+        DO UPDATE SET points = players.points + EXCLUDED.points
+        """,
+        (user_id, amount)
     )
 
     cur.close()
     conn.close()
+
 
 def ensure_user_pg(user_id: int):
     """
