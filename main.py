@@ -1,4 +1,4 @@
-import logging
+                                    import logging
 import json
 import os  
 
@@ -128,28 +128,28 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.wfile.write(b'{"error":"no_user_id"}')
                 return
 
-            # 🔥 КЛЮЧОВЕ МІСЦЕ:
-            # get_or_create_pg створює запис, якщо його ще нема,
-            # або повертає існуючі points
-            points = get_or_create_pg(user_id)
+                # 🔥 КЛЮЧОВЕ МІСЦЕ:
+                # get_or_create_pg створює запис, якщо його ще нема,
+                # або повертає існуючі points
+                points = get_or_create_pg(user_id)
+    
+                result = json.dumps({"points": points}).encode("utf-8")
+    
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Headers", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.end_headers()
+                self.wfile.write(result)
+                return
 
-            result = json.dumps({"points": points}).encode("utf-8")
-
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
+            # якщо шлях не відомий — 404
+            self.send_response(404)
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Headers", "*")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.end_headers()
-            self.wfile.write(result)
-            return
-
-        # якщо шлях не відомий — 404
-        self.send_response(404)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.end_headers()
 
 
     def do_POST(self):
