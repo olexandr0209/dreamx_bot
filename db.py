@@ -136,3 +136,25 @@ def add_points_pg(user_id: int, amount: int):
 
     cur.close()
     conn.close()
+
+def ensure_user_pg(user_id: int):
+    """
+    Гарантує, що користувач існує в таблиці players.
+    Якщо його нема — створює з points = 0.
+    Якщо є — нічого не робить.
+    """
+    conn = connect_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        INSERT INTO players (user_id, points)
+        VALUES (%s, 0)
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        (user_id,)
+    )
+
+    cur.close()
+    conn.close()
+
