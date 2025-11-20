@@ -114,10 +114,32 @@ def get_or_create_pg(user_id: int) -> int:
     return 0
 
 def get_points_pg(user_id: int) -> int:
-    # Використовуємо get_or_create_pg:
-    #  - повертає бали, якщо рядок існує
-    #  - створює нового гравця, якщо нема
-    return get_or_create_pg(user_id)
+    """
+    Гарантує, що гравець існує.
+    Якщо немає рядка з user_id — створює його з 0 балів.
+    Потім повертає поточні points.
+    """
+    conn = connect_db()
+    cur = conn.cursor()
+
+    # 1️⃣ Створюємо юзера, якщо його ще нема
+    cur.execute(
+        """
+        INSERT INTO players (user_id, points)
+        VALUES (%s, 0)
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        (user_id,)
+    )
+
+    # 2️⃣ Читаємо поточні бали
+    cur.execute("SELECT points FROM players WHERE user_id = %s", (user_id,))
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    return row[0] if row else 0
 
 
 def add_points_pg(user_id: int, amount: int):
