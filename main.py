@@ -19,7 +19,7 @@ from telegram.ext import (
     filters,
 )
 
-from db import init_pg_db, get_or_create_pg, get_points_pg, add_points_pg
+from db import init_pg_db, get_or_create_pg, get_points_pg, add_points_pg, ensure_user_pg
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
@@ -175,12 +175,56 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.end_headers()
             self.wfile.write(result)
+
+        elif parsed.path == "/api/ensure_user":
+            # 🔹 Новий endpoint, який просто гарантує користувача в БД
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Headers", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.end_headers()
+                self.wfile.write(b'{"error":"invalid_json"}')
+                return
+
+            user_id = int(payload.get("user_id", 0))
+
+            if not user_id:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Headers", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.end_headers()
+                self.wfile.write(b'{"error":"no_user_id"}')
+                return
+
+            # ✅ Гарантуємо, що юзер є в players
+            ensure_user_pg(user_id)
+
+            result = json.dumps({"ok": True}).encode("utf-8")
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.end_headers()
+            self.wfile.write(result)
+
         else:
             self.send_response(404)
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Headers", "*")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.end_headers()
+
 
 
 
