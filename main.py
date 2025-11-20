@@ -75,7 +75,6 @@ async def mypoints(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"У тебе зараз {points} балів 🔥"
     )
 
-
 class PointsAPI(BaseHTTPRequestHandler):
 
     def do_HEAD(self):
@@ -93,59 +92,60 @@ class PointsAPI(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
-  def do_GET(self):
-    parsed = urlparse(self.path)
 
-    # health-check для Render
-    if parsed.path == "/":
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.end_headers()
-        self.wfile.write(b"Bot is running")
-        return
+    def do_GET(self):
+        parsed = urlparse(self.path)
 
-    # API: отримати бали
-    if parsed.path == "/api/get_points":
-        params = parse_qs(parsed.query)
+        # health-check для Render
+        if parsed.path == "/":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.end_headers()
+            self.wfile.write(b"Bot is running")
+            return
 
-        try:
-            user_id = int(params.get("user_id", [0])[0])
-        except (TypeError, ValueError):
-            user_id = 0
+        # API: отримати бали
+        if parsed.path == "/api/get_points":
+            params = parse_qs(parsed.query)
 
-        if not user_id:
-            self.send_response(400)
+            try:
+                user_id = int(params.get("user_id", [0])[0])
+            except (TypeError, ValueError):
+                user_id = 0
+
+            if not user_id:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Headers", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.end_headers()
+                self.wfile.write(b'{"error":"no_user_id"}')
+                return
+
+            # 🔥 КЛЮЧОВЕ МІСЦЕ — створюємо/читаємо користувача
+            points = get_or_create_pg(user_id)
+
+            result = json.dumps({"points": points}).encode("utf-8")
+
+            self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Headers", "*")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.end_headers()
-            self.wfile.write(b'{"error":"no_user_id"}')
+            self.wfile.write(result)
             return
 
-        # 🔥 КЛЮЧОВЕ МІСЦЕ — ТЕПЕР ПРАВИЛЬНО
-        points = get_or_create_pg(user_id)
-
-        result = json.dumps({"points": points}).encode("utf-8")
-
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
+        # інші шляхи — 404
+        self.send_response(404)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
-        self.wfile.write(result)
-        return
-
-    # інші шляхи — 404
-    self.send_response(404)
-    self.send_header("Access-Control-Allow-Origin", "*")
-    self.send_header("Access-Control-Allow-Headers", "*")
-    self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-    self.end_headers()
 
 
     def do_POST(self):
