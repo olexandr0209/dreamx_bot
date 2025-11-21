@@ -25,39 +25,16 @@ def init_pg_db():
         conn.close()
 
 
-def get_or_create_user_points(user_id: int) -> int:
-    """
-    Повертає кількість поінтів користувача.
-    Якщо немає в players — створює з 0 і повертає 0.
-    """
-    conn = get_connection()
-    try:
-        with conn, conn.cursor() as cur:
-            cur.execute(
-                "SELECT points FROM players WHERE user_id = %s",
-                (user_id,)
-            )
-            row = cur.fetchone()
-            if row:
-                return row[0]
-
-            cur.execute(
-                "INSERT INTO players (user_id, points) VALUES (%s, %s) RETURNING points",
-                (user_id, 0)
-            )
-            new_row = cur.fetchone()
-            return new_row[0]
-    finally:
-        conn.close()
-
-
 def get_points_pg(user_id: int) -> int:
     """
     Гарантує, що гравець існує.
+    Якщо немає рядка з user_id — створює його з 0 балів.
+    Потім повертає поточні points.
     """
     conn = get_connection()
     try:
         with conn, conn.cursor() as cur:
+            # Створюємо, якщо нема
             cur.execute(
                 """
                 INSERT INTO players (user_id, points)
@@ -67,6 +44,7 @@ def get_points_pg(user_id: int) -> int:
                 (user_id,)
             )
 
+            # Читаємо
             cur.execute(
                 "SELECT points FROM players WHERE user_id = %s",
                 (user_id,)
