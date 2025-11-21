@@ -70,7 +70,6 @@ async def mypoints(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"У тебе зараз {points} балів 🔥"
     )
 
-
 # =========================
 #   HTTP API (POINTS)
 # =========================
@@ -105,7 +104,7 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.wfile.write(b"Bot is running")
             return
 
-        # ✅ Отримати бали (і створити юзера при потребі)
+        # ✅ Отримати звичайні бали (points)
         if parsed.path == "/api/get_points":
             params = parse_qs(parsed.query)
 
@@ -122,10 +121,38 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.wfile.write(b'{"error":"no_user_id"}')
                 return
 
-            # 🔥 ТА САМА ФУНКЦІЯ, що й в /mypoints і /start
             points = bd.get_points_pg(user_id)
 
             result = json.dumps({"points": points}).encode("utf-8")
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._set_cors()
+            self.end_headers()
+            self.wfile.write(result)
+            return
+
+        # ✅ Отримати турнірні бали (points_tour)
+        if parsed.path == "/api/get_tour_points":
+            params = parse_qs(parsed.query)
+
+            try:
+                user_id = int(params.get("user_id", [0])[0])
+            except (TypeError, ValueError):
+                user_id = 0
+
+            if not user_id:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"no_user_id"}')
+                return
+
+            # окрема функція для читання points_tour
+            points_tour = bd.get_tour_points_pg(user_id)
+
+            result = json.dumps({"points_tour": points_tour}).encode("utf-8")
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -142,7 +169,7 @@ class PointsAPI(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
 
-        # ✅ Додати бали
+        # ✅ Додати звичайні бали (points)
         if parsed.path == "/api/add_points":
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length)
@@ -171,6 +198,46 @@ class PointsAPI(BaseHTTPRequestHandler):
             new_points = bd.add_points_and_return(user_id, delta)
 
             result = json.dumps({"ok": True, "points": new_points}).encode("utf-8")
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._set_cors()
+            self.end_headers()
+            self.wfile.write(result)
+            return
+
+        # ✅ Додати турнірні бали (points_tour)
+        elif parsed.path == "/api/add_tour_points":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"invalid_json"}')
+                return
+
+            user_id = int(payload.get("user_id", 0))
+            delta = int(payload.get("delta", 0))
+
+            if not user_id or delta == 0:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"bad_parameters"}')
+                return
+
+            # окрема функція для points_tour
+            new_points_tour = bd.add_tour_points_and_return(user_id, delta)
+
+            result = json.dumps(
+                {"ok": True, "points_tour": new_points_tour}
+            ).encode("utf-8")
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -219,6 +286,7 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.send_response(404)
             self._set_cors()
             self.end_headers()
+
 
 
 def run_api():
