@@ -9,6 +9,7 @@ from bd import (
     add_points_pg,
     ensure_user_pg,
     get_or_create_user_points,
+    add_points_and_return,
 )
 
 from telegram import (
