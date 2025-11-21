@@ -181,3 +181,77 @@ def ensure_user_pg(user_id: int):
     cur.close()
     conn.close()
 
+
+# bd.py
+import os
+import psycopg2
+
+def get_connection():
+    return psycopg2.connect(os.environ["DATABASE_URL"], sslmode="require")
+
+
+def get_or_create_user_points(user_id: int) -> int:
+    """
+    Повертає кількість поінтів користувача.
+    Якщо користувача немає в базі — створює його з 0 поінтів і повертає 0.
+    """
+    conn = get_connection()
+    try:
+        with conn, conn.cursor() as cur:
+            # 1. Пробуємо знайти користувача
+            cur.execute(
+                "SELECT points FROM users WHERE user_id = %s",
+                (user_id,)
+            )
+            row = cur.fetchone()
+            if row:
+                return row[0]
+
+            # 2. Якщо немає — створюємо з 0
+            cur.execute(
+                "INSERT INTO users (user_id, points) VALUES (%s, %s) RETURNING points",
+                (user_id, 0)
+            )
+            new_row = cur.fetchone()
+            return new_row[0]
+    finally:
+        conn.close()
+
+
+def add_points_and_return(user_id: int, delta: int) -> int:
+    """
+    Додає delta поінтів (може бути відʼємним) користувачу.
+    Якщо користувача ще немає — створює його і одразу додає йому delta.
+    Повертає новий баланс.
+    """
+    conn = get_connection()
+    try:
+        with conn, conn.cursor() as cur:
+            # Спочатку пробуємо оновити
+            cur.execute(
+                """
+                UPDATE users
+                SET points = points + %s
+                WHERE user_id = %s
+                RETURNING points
+                """,
+                (delta, user_id)
+            )
+            row = cur.fetchone()
+
+            if not row:
+                # Якщо рядків не оновилось — користувача не існує
+                cur.execute(
+                    """
+                    INSERT INTO users (user_id, points)
+                    VALUES (%s, %s)
+                    RETURNING points
+                    """,
+                    (user_id, delta)
+                )
+                row = cur.fetchone()
+
+            conn.commit()
+            return row[0]
+    finally:
+        conn.close()
