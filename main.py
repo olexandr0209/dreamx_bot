@@ -1,12 +1,18 @@
 import logging
 import json
-import os  
+import os
 
+import bd
+from bd import (
+    init_pg_db,
+    get_points_pg,
+    add_points_pg,
+    ensure_user_pg,
+    get_or_create_user_points,
+)
 
 from telegram import (
     Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
     WebAppInfo,
     KeyboardButton,
     ReplyKeyboardMarkup,
@@ -15,11 +21,7 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     ContextTypes,
-    MessageHandler,
-    filters,
 )
-
-from db import init_pg_db, get_or_create_pg, get_points_pg, add_points_pg, ensure_user_pg
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
@@ -34,16 +36,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# =========================
+#   TELEGRAM BOT HANDLERS
+# =========================
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
-    points = get_or_create_pg(user.id)
+    # 🔥 створюємо або читаємо користувача з БД
+    points = get_or_create_user_points(user.id)
 
-    # Тепер передаємо І user_id, І points
+    # Передаємо user_id і points в URL (можеш потім points прибрати,
+    # якщо фронт повністю переходить на API /api/get_points)
     url_with_points = f"{WEBAPP_URL}?user_id={user.id}&points={points}"
 
-
-    # 🔹 клавіатура з ЗВИЧАЙНОЮ кнопкою (KeyboardButton), не inline
     keyboard = [
         [
             KeyboardButton(
@@ -55,8 +61,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     reply_kb = ReplyKeyboardMarkup(
         keyboard,
-        resize_keyboard=True,      # кнопка компактна, як у мобільних чатах
-        one_time_keyboard=False,   # не ховається після натискання (можна змінити)
+        resize_keyboard=True,
+        one_time_keyboard=False,
     )
 
     await update.message.reply_text(
@@ -75,22 +81,28 @@ async def mypoints(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"У тебе зараз {points} балів 🔥"
     )
 
+
+# =========================
+#   HTTP API (POINTS)
+# =========================
+
 class PointsAPI(BaseHTTPRequestHandler):
+
+    def _set_cors(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 
     def do_HEAD(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self._set_cors()
         self.end_headers()
 
     # ✅ OPTIONS для preflight CORS
     def do_OPTIONS(self):
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self._set_cors()
         self.end_headers()
 
     def do_GET(self):
@@ -100,14 +112,12 @@ class PointsAPI(BaseHTTPRequestHandler):
         if parsed.path == "/":
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Headers", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self._set_cors()
             self.end_headers()
             self.wfile.write(b"Bot is running")
             return
 
-        # API: отримати бали
+        # ✅ API: отримати бали (автоматично створює юзера, якщо його нема)
         if parsed.path == "/api/get_points":
             params = parse_qs(parsed.query)
 
@@ -119,38 +129,32 @@ class PointsAPI(BaseHTTPRequestHandler):
             if not user_id:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Headers", "*")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self._set_cors()
                 self.end_headers()
                 self.wfile.write(b'{"error":"no_user_id"}')
                 return
 
-            # 🔥 КЛЮЧОВЕ МІСЦЕ — створюємо/читаємо користувача
-            points = get_or_create_pg(user_id)
+            # 🔥 ключ: створюємо або отримуємо користувача
+            points = bd.get_or_create_user_points(user_id)
 
             result = json.dumps({"points": points}).encode("utf-8")
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Headers", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self._set_cors()
             self.end_headers()
             self.wfile.write(result)
             return
 
         # інші шляхи — 404
         self.send_response(404)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self._set_cors()
         self.end_headers()
-
 
     def do_POST(self):
         parsed = urlparse(self.path)
 
+        # ✅ Додати бали користувачу
         if parsed.path == "/api/add_points":
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length)
@@ -160,9 +164,7 @@ class PointsAPI(BaseHTTPRequestHandler):
             except json.JSONDecodeError:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Headers", "*")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self._set_cors()
                 self.end_headers()
                 self.wfile.write(b'{"error":"invalid_json"}')
                 return
@@ -173,9 +175,7 @@ class PointsAPI(BaseHTTPRequestHandler):
             if not user_id or delta == 0:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Headers", "*")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self._set_cors()
                 self.end_headers()
                 self.wfile.write(b'{"error":"bad_parameters"}')
                 return
@@ -188,14 +188,13 @@ class PointsAPI(BaseHTTPRequestHandler):
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Headers", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self._set_cors()
             self.end_headers()
             self.wfile.write(result)
+            return
 
+        # ✅ Просто гарантуємо, що юзер існує
         elif parsed.path == "/api/ensure_user":
-            # 🔹 Новий endpoint, який просто гарантує користувача в БД
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length)
 
@@ -204,9 +203,7 @@ class PointsAPI(BaseHTTPRequestHandler):
             except json.JSONDecodeError:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Headers", "*")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self._set_cors()
                 self.end_headers()
                 self.wfile.write(b'{"error":"invalid_json"}')
                 return
@@ -216,34 +213,26 @@ class PointsAPI(BaseHTTPRequestHandler):
             if not user_id:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Headers", "*")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self._set_cors()
                 self.end_headers()
                 self.wfile.write(b'{"error":"no_user_id"}')
                 return
 
-            # ✅ Гарантуємо, що юзер є в players
             ensure_user_pg(user_id)
 
             result = json.dumps({"ok": True}).encode("utf-8")
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Headers", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self._set_cors()
             self.end_headers()
             self.wfile.write(result)
+            return
 
         else:
             self.send_response(404)
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Headers", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self._set_cors()
             self.end_headers()
-
-
 
 
 def run_api():
@@ -263,7 +252,6 @@ if __name__ == "__main__":
     # 3. Реєструємо команди
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(CommandHandler("mypoints", mypoints))
-    
 
     # 4. Запускаємо HTTP API в окремому потоці
     api_thread = threading.Thread(target=run_api, daemon=True)
