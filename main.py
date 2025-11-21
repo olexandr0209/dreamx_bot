@@ -1,16 +1,9 @@
 import logging
 import json
 import os
-
-import bd
-from bd import (
-    init_pg_db,
-    get_points_pg,
-    add_points_pg,
-    ensure_user_pg,
-    get_or_create_user_points,
-    add_points_and_return,
-)
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse, parse_qs
 
 from telegram import (
     Update,
@@ -24,11 +17,8 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import threading
-from urllib.parse import urlparse, parse_qs
-
-from config import BOT_TOKEN, DATABASE_URL, WEBAPP_URL
+import bd
+from config import BOT_TOKEN, WEBAPP_URL
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -44,11 +34,9 @@ logger = logging.getLogger(__name__)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
-    # 🔥 створюємо або читаємо користувача з БД
-    points = get_or_create_user_points(user.id)
+    # 🔥 ВАЖЛИВО: одна й та ж логіка, що й для гри
+    points = bd.get_points_pg(user.id)
 
-    # Передаємо user_id і points в URL (можеш потім points прибрати,
-    # якщо фронт повністю переходить на API /api/get_points)
     url_with_points = f"{WEBAPP_URL}?user_id={user.id}&points={points}"
 
     keyboard = [
@@ -76,7 +64,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def mypoints(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    points = get_points_pg(user.id)
+    points = bd.get_points_pg(user.id)
 
     await update.message.reply_text(
         f"У тебе зараз {points} балів 🔥"
@@ -100,7 +88,6 @@ class PointsAPI(BaseHTTPRequestHandler):
         self._set_cors()
         self.end_headers()
 
-    # ✅ OPTIONS для preflight CORS
     def do_OPTIONS(self):
         self.send_response(200)
         self._set_cors()
@@ -109,7 +96,7 @@ class PointsAPI(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
 
-        # health-check для Render
+        # health-check
         if parsed.path == "/":
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -118,7 +105,7 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.wfile.write(b"Bot is running")
             return
 
-        # ✅ API: отримати бали (автоматично створює юзера, якщо його нема)
+        # ✅ Отримати бали (і створити юзера при потребі)
         if parsed.path == "/api/get_points":
             params = parse_qs(parsed.query)
 
@@ -135,8 +122,8 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.wfile.write(b'{"error":"no_user_id"}')
                 return
 
-            # 🔥 ключ: створюємо або отримуємо користувача
-            points = bd.get_or_create_user_points(user_id)
+            # 🔥 ТА САМА ФУНКЦІЯ, що й в /mypoints і /start
+            points = bd.get_points_pg(user_id)
 
             result = json.dumps({"points": points}).encode("utf-8")
 
@@ -155,7 +142,7 @@ class PointsAPI(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
 
-        # ✅ Додати бали користувачу
+        # ✅ Додати бали
         if parsed.path == "/api/add_points":
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length)
@@ -181,11 +168,9 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.wfile.write(b'{"error":"bad_parameters"}')
                 return
 
-            # ✅ оновлюємо БД
-            add_points_pg(user_id, delta)
-            points = get_points_pg(user_id)
+            new_points = bd.add_points_and_return(user_id, delta)
 
-            result = json.dumps({"ok": True, "points": points}).encode("utf-8")
+            result = json.dumps({"ok": True, "points": new_points}).encode("utf-8")
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -194,7 +179,7 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.wfile.write(result)
             return
 
-        # ✅ Просто гарантуємо, що юзер існує
+        # ✅ Просто гарантуємо, що юзер є
         elif parsed.path == "/api/ensure_user":
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length)
@@ -219,7 +204,7 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.wfile.write(b'{"error":"no_user_id"}')
                 return
 
-            ensure_user_pg(user_id)
+            bd.ensure_user_pg(user_id)
 
             result = json.dumps({"ok": True}).encode("utf-8")
 
@@ -245,16 +230,16 @@ def run_api():
 
 if __name__ == "__main__":
     # 1. Створюємо таблицю, якщо її ще нема
-    init_pg_db()
+    bd.init_pg_db()
 
-    # 2. Створюємо застосунок Telegram
+    # 2. Telegram app
     tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # 3. Реєструємо команди
+    # 3. Команди
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(CommandHandler("mypoints", mypoints))
 
-    # 4. Запускаємо HTTP API в окремому потоці
+    # 4. HTTP API в окремому потоці
     api_thread = threading.Thread(target=run_api, daemon=True)
     api_thread.start()
 
