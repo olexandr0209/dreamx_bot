@@ -26,6 +26,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+ADMIN_IDS = [929619425]  # твій Telegram ID, додай інші при потребі
 
 # =========================
 #   TELEGRAM BOT HANDLERS
@@ -69,6 +70,50 @@ async def mypoints(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"У тебе зараз {points} балів 🔥"
     )
+
+async def pm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /pm <user_id> <текст>
+
+    Приклад:
+    /pm 123456789 Вітаю, ти виграв у DreamX! 🎉
+    """
+    user = update.effective_user
+
+    # 🔒 тільки адміни можуть користуватись цією командою
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("У тебе немає прав використовувати цю команду.")
+        return
+
+    # треба мінімум 2 аргументи: id + текст
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "Формат:\n"
+            "/pm <user_id> <повідомлення>\n\n"
+            "Приклад:\n"
+            "/pm 123456789 Вітаю, ти виграв! 🎉"
+        )
+        return
+
+    # перший аргумент — це user_id
+    try:
+        target_user_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("user_id має бути числом.")
+        return
+
+    # все, що після user_id — текст повідомлення
+    text = " ".join(context.args[1:])
+
+    try:
+        await context.bot.send_message(chat_id=target_user_id, text=text)
+        await update.message.reply_text("Повідомлення надіслано ✅")
+    except Exception as e:
+        await update.message.reply_text(
+            "Не вдалося надіслати повідомлення.\n"
+            "Можливо, користувач ще не натискав /start у боті.\n"
+            f"Помилка: {e}"
+        )
 
 # =========================
 #   HTTP API (POINTS)
@@ -306,6 +351,8 @@ if __name__ == "__main__":
     # 3. Команди
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(CommandHandler("mypoints", mypoints))
+    tg_app.add_handler(CommandHandler("pm", pm_command))
+
 
     # 4. HTTP API в окремому потоці
     api_thread = threading.Thread(target=run_api, daemon=True)
