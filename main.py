@@ -269,13 +269,14 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.wfile.write(result)
             return
         
-        # ✅ Отримати активні розіграші для WebApp
+        # ✅ Отримати ВСІ активні карточки для WebApp
+        # (звичайні розіграші, промо-розіграші, оголошення)
         if parsed.path == "/api/get_giveaways":
             try:
-                giveaways = gdb.get_active_giveaways()  # список dict
+                cards = gdb.get_active_cards()  # список dict з різними kind
                 payload = json.dumps(
-                    {"giveaways": giveaways},
-                    default=str  # щоб датива/час серіалізувалися
+                    {"giveaways": cards},   # можна думати як "усі карточки розіграшів/анонсів"
+                    default=str             # щоб datetime серіалізувався в строки
                 ).encode("utf-8")
 
                 self.send_response(200)
@@ -284,13 +285,14 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(payload)
             except Exception as e:
-                logger.exception("get_active_giveaways error")
+                logger.exception("get_active_cards error: %s", e)
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self._set_cors()
                 self.end_headers()
                 self.wfile.write(b'{"error":"db_error"}')
             return
+
 
 
         
