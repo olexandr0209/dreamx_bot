@@ -117,6 +117,67 @@ async def pm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Помилка: {e}"
         )
 
+
+#================== Карточка з бази даних ================= # 
+
+
+
+
+async def test_giveaways(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Тест: показати активні розіграші та оголошення,
+    які бачить ігровий бот із загальної БД.
+    """
+    user = update.effective_user
+
+    # 1) активні розіграші
+    giveaways = gdb.get_active_giveaways()
+    promo = gdb.get_active_promo_giveaways()
+    anns = gdb.get_active_announcements()
+
+    lines = [f"👋 Привіт, {user.first_name}!",
+             "Ось що зараз є в системі:\n"]
+
+    if giveaways:
+        lines.append("🎁 *Активні звичайні розіграші:*")
+        for g in giveaways:
+            lines.append(
+                f"- `#{g['id']}` {g['title']} — приз: *{g['prize']}* "
+                f"(до {g['prize_count']} переможців), до {g['end_at']:%d.%m %H:%M}"
+            )
+        lines.append("")  # пуста строка
+    else:
+        lines.append("Немає активних звичайних розіграшів.\n")
+
+    if promo:
+        lines.append("📣 *Активні промо-розіграші каналів:*")
+        for p in promo:
+            lines.append(
+                f"- `#{p['id']}` {p['title']} — приз: *{p['prize']}* "
+                f"(до {p['prize_count']}), до {p['end_at']:%d.%m %H:%M}"
+            )
+        lines.append("")
+    else:
+        lines.append("Немає активних промо-розіграшів.\n")
+
+    if anns:
+        lines.append("📌 *Активні оголошення:*")
+        for a in anns:
+            lines.append(
+                f"- `#{a['id']}` {a['title']} (до {a['end_at']:%d.%m %H:%M})"
+            )
+    else:
+        lines.append("Немає активних оголошень.")
+
+    text = "\n".join(lines)
+
+    await update.message.reply_text(
+        text,
+        parse_mode="Markdown"
+    )
+
+
+
 # =========================
 #   HTTP API (POINTS)
 # =========================
@@ -354,6 +415,7 @@ if __name__ == "__main__":
     tg_app.add_handler(CommandHandler("start", start))
     tg_app.add_handler(CommandHandler("mypoints", mypoints))
     tg_app.add_handler(CommandHandler("pm", pm_command))
+    tg_app.add_handler(CommandHandler("test_giveaways", test_giveaways))  # 👈 ДОДАТИ ЦЮ ЛІНІЮ
 
 
     # 4. HTTP API в окремому потоці
