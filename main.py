@@ -5,6 +5,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
+import giveaway_db_from_admin as gdb
+
 from telegram import (
     Update,
     WebAppInfo,
