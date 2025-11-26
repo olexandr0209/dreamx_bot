@@ -268,7 +268,32 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(result)
             return
+        
+        # ✅ Отримати активні розіграші для WebApp
+        if parsed.path == "/api/get_giveaways":
+            try:
+                giveaways = gdb.get_active_giveaways()  # список dict
+                payload = json.dumps(
+                    {"giveaways": giveaways},
+                    default=str  # щоб датива/час серіалізувалися
+                ).encode("utf-8")
 
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(payload)
+            except Exception as e:
+                logger.exception("get_active_giveaways error")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"db_error"}')
+            return
+
+
+        
         # інші шляхи — 404
         self.send_response(404)
         self._set_cors()
