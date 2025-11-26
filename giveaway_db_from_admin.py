@@ -412,3 +412,40 @@ def get_active_announcements() -> list[dict]:
         return anns
     finally:
         conn.close()
+
+
+def get_active_cards() -> list[dict]:
+    """
+    Єдиний список всіх активних карточок для фронта.
+    Об'єднує:
+    - звичайні розіграші (giveaways)  -> kind = "normal"
+    - рекламні розіграші (promo_giveaways) -> kind = "promo"
+    - оголошення (announcements) -> kind = "announcement"
+    """
+    cards: list[dict] = []
+
+    # 1) Звичайні розіграші
+    for g in get_active_giveaways():
+        item = dict(g)
+        item["kind"] = "normal"
+        cards.append(item)
+
+    # 2) Рекламні розіграші
+    for p in get_active_promo_giveaways():
+        item = dict(p)
+        item["kind"] = "promo"
+        cards.append(item)
+
+    # 3) Оголошення
+    for a in get_active_announcements():
+        item = dict(a)
+        item["kind"] = "announcement"
+        cards.append(item)
+
+    # Можна посортувати за start_at (якщо є), інакше по end_at
+    def sort_key(x: dict):
+        return x.get("start_at") or x.get("end_at") or datetime.max
+
+    cards.sort(key=sort_key)
+
+    return cards
