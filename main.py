@@ -188,7 +188,6 @@ async def test_giveaways(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #   HTTP API (POINTS)
 # =========================
 
-
 class PointsAPI(BaseHTTPRequestHandler):
 
     def _set_cors(self):
@@ -343,6 +342,63 @@ class PointsAPI(BaseHTTPRequestHandler):
 
             # username / first_name ми тут не знаємо, тому None
             bd.ensure_user_pg(user_id, None, None)
+
+            result = json.dumps({"ok": True}).encode("utf-8")
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._set_cors()
+            self.end_headers()
+            self.wfile.write(result)
+            return
+
+        # ✅ Додати участь у розіграші (giveaway_players)
+        elif parsed.path == "/api/join_giveaway":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"invalid_json"}')
+                return
+
+            try:
+                user_id = int(payload.get("user_id", 0))
+                giveaway_id = int(payload.get("giveaway_id", 0))
+            except (TypeError, ValueError):
+                user_id = 0
+                giveaway_id = 0
+
+            username = payload.get("username") or None
+
+            if not user_id or not giveaway_id:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"bad_parameters"}')
+                return
+
+            try:
+                gdb.add_giveaway_player(
+                    giveaway_id=giveaway_id,
+                    user_id=user_id,
+                    username_snapshot=username,
+                    points_in_giveaway=1
+                )
+            except Exception as e:
+                logger.exception("join_giveaway error: %s", e)
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"db_error"}')
+                return
 
             result = json.dumps({"ok": True}).encode("utf-8")
 
