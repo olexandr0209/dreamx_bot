@@ -188,6 +188,7 @@ async def test_giveaways(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #   HTTP API (POINTS)
 # =========================
 
+
 class PointsAPI(BaseHTTPRequestHandler):
 
     def _set_cors(self):
@@ -218,7 +219,9 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.wfile.write(b"Bot is running")
             return
 
-        # ✅ Отримати звичайні бали (points)
+        # ======================
+        #  GET_POINTS
+        # ======================
         if parsed.path == "/api/get_points":
             params = parse_qs(parsed.query)
 
@@ -246,14 +249,15 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.wfile.write(result)
             return
 
-        # ✅ Отримати ВСІ активні карточки для WebApp
-        # (звичайні розіграші, промо-розіграші, оголошення)
+        # ======================
+        #  GET_GIVEAWAYS (усі картки)
+        # ======================
         if parsed.path == "/api/get_giveaways":
             try:
-                cards = gdb.get_active_cards()  # список dict з різними kind
+                cards = gdb.get_active_cards()
                 payload = json.dumps(
-                    {"giveaways": cards},   # усі карточки розіграшів/анонсів
-                    default=str             # щоб datetime серіалізувався в строки
+                    {"giveaways": cards},
+                    default=str
                 ).encode("utf-8")
 
                 self.send_response(200)
@@ -270,7 +274,9 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.wfile.write(b'{"error":"db_error"}')
             return
 
-        # ✅ НОВЕ: список розіграшів, де юзер вже бере участь
+        # ======================
+        #  🔥 НОВЕ: GET_JOINED_GIVEAWAYS
+        # ======================
         if parsed.path == "/api/get_joined_giveaways":
             params = parse_qs(parsed.query)
 
@@ -281,16 +287,29 @@ class PointsAPI(BaseHTTPRequestHandler):
 
             if not user_id:
                 self.send_response(400)
-                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Type", "application/json; charset=utf-8")
                 self._set_cors()
                 self.end_headers()
                 self.wfile.write(b'{"error":"no_user_id"}')
                 return
 
             try:
-                joined_ids = gdb.get_user_giveaway_ids(user_id)
+                # rows: [{ "giveaway_id": 1, "kind": "normal" }, ...]
+                rows = gdb.get_joined_giveaways_for_user(user_id)
+
+                # Стара логіка — тільки normal
+                normal_ids = [
+                    r["giveaway_id"]
+                    for r in rows
+                    if r.get("kind") == "normal"
+                ]
+
                 payload = json.dumps(
-                    {"joined_giveaway_ids": joined_ids}
+                    {
+                        "joined": rows,
+                        "joined_giveaway_ids": normal_ids
+                    },
+                    default=str
                 ).encode("utf-8")
 
                 self.send_response(200)
@@ -298,6 +317,8 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self._set_cors()
                 self.end_headers()
                 self.wfile.write(payload)
+                return
+
             except Exception as e:
                 logger.exception("get_joined_giveaways error: %s", e)
                 self.send_response(500)
@@ -305,17 +326,22 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self._set_cors()
                 self.end_headers()
                 self.wfile.write(b'{"error":"db_error"}')
-            return
+                return
 
-        # інші шляхи — 404
+        # 404
         self.send_response(404)
         self._set_cors()
         self.end_headers()
 
+    # =====================================================
+    #                   POST
+    # =====================================================
     def do_POST(self):
         parsed = urlparse(self.path)
 
-        # ✅ Додати звичайні бали (points)
+        # ======================
+        #  ADD_POINTS
+        # ======================
         if parsed.path == "/api/add_points":
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length)
@@ -352,7 +378,9 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.wfile.write(result)
             return
 
-        # ✅ Просто гарантуємо, що юзер є
+        # ======================
+        #  ENSURE_USER
+        # ======================
         elif parsed.path == "/api/ensure_user":
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length)
@@ -377,7 +405,6 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.wfile.write(b'{"error":"no_user_id"}')
                 return
 
-            # username / first_name ми тут не знаємо, тому None
             bd.ensure_user_pg(user_id, None, None)
 
             result = json.dumps({"ok": True}).encode("utf-8")
@@ -389,7 +416,9 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.wfile.write(result)
             return
 
-        # ✅ Участь у звичайному розіграші
+        # ======================
+        #  🔥 НОВЕ: JOIN_GIVEAWAY (normal + promo)
+        # ======================
         elif parsed.path == "/api/join_giveaway":
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length)
@@ -404,8 +433,16 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.wfile.write(b'{"error":"invalid_json"}')
                 return
 
-            giveaway_id = int(payload.get("giveaway_id", 0))
-            user_id = int(payload.get("user_id", 0))
+            # нове поле kind
+            kind = payload.get("kind", "normal")
+
+            try:
+                giveaway_id = int(payload.get("giveaway_id", 0))
+                user_id = int(payload.get("user_id", 0))
+            except Exception:
+                giveaway_id = 0
+                user_id = 0
+
             username = payload.get("username") or None
 
             if not giveaway_id or not user_id:
@@ -421,11 +458,21 @@ class PointsAPI(BaseHTTPRequestHandler):
                     giveaway_id=giveaway_id,
                     user_id=user_id,
                     username_snapshot=username,
-                    points_in_giveaway=1
+                    points_in_giveaway=1,
+                    kind=kind,   # 🔥 нове
                 )
+
+                result = json.dumps({"ok": True}).encode("utf-8")
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(result)
+                return
+
             except Exception as e:
                 logger.exception("join_giveaway error: %s", e)
-                # якщо тут буде дубль, фронт все одно покаже "Ви приєднались"
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json")
                 self._set_cors()
@@ -433,20 +480,11 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.wfile.write(b'{"error":"db_error"}')
                 return
 
-            result = json.dumps({"ok": True}).encode("utf-8")
-
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self._set_cors()
-            self.end_headers()
-            self.wfile.write(result)
-            return
-
+        # 404
         else:
             self.send_response(404)
             self._set_cors()
             self.end_headers()
-
 
 
 def run_api():
