@@ -473,5 +473,25 @@ def add_giveaway_player(giveaway_id: int, user_id: int, username_snapshot: str |
         conn.close()
 
 
+def get_user_giveaway_ids(user_id: int) -> list[int]:
+    """
+    Повертає список id розіграшів, у яких користувач уже бере участь.
+    Використовується фронтом, щоб показувати '✅ Ви приєднались'.
+    """
+    conn = _get_conn()
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT giveaway_id
+                FROM giveaway_players
+                WHERE user_id = %s;
+                """,
+                (user_id,)
+            )
+            rows = cur.fetchall()
+            return [r[0] for r in rows]
+    finally:
+        conn.close()
 
 
