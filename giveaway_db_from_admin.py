@@ -449,3 +449,29 @@ def get_active_cards() -> list[dict]:
     cards.sort(key=sort_key)
 
     return cards
+
+
+
+
+
+def add_giveaway_player(giveaway_id: int, user_id: int, username_snapshot: str | None, points_in_giveaway: int = 1):
+    """
+    Додає участь користувача в розіграші.
+    points_in_giveaway – завжди 1 при вході по кнопці.
+    """
+    conn = _get_conn()
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO giveaway_players (giveaway_id, user_id, username_snapshot, points_in_giveaway)
+                VALUES (%s, %s, %s, %s);
+                """,
+                (giveaway_id, user_id, username_snapshot, points_in_giveaway)
+            )
+    finally:
+        conn.close()
+
+
+
+
