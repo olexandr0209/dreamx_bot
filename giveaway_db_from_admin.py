@@ -454,9 +454,19 @@ def get_active_cards() -> list[dict]:
 
 
 
-def add_giveaway_player(giveaway_id: int, user_id: int, username_snapshot: str | None, points_in_giveaway: int = 1):
+def add_giveaway_player(
+    giveaway_id: int,
+    user_id: int,
+    username_snapshot: str | None,
+    points_in_giveaway: int = 1,
+    kind: str = "normal",
+) -> None:
     """
     Додає участь користувача в розіграші.
+
+    kind:
+      - "normal"  -> таблиця giveaways
+      - "promo"   -> таблиця promo_giveaways
     points_in_giveaway – завжди 1 при вході по кнопці.
     """
     conn = _get_conn()
@@ -464,13 +474,43 @@ def add_giveaway_player(giveaway_id: int, user_id: int, username_snapshot: str |
         with conn, conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO giveaway_players (giveaway_id, user_id, username_snapshot, points_in_giveaway)
-                VALUES (%s, %s, %s, %s);
+                INSERT INTO giveaway_players (
+                    giveaway_id,
+                    user_id,
+                    username_snapshot,
+                    points_in_giveaway,
+                    kind
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (kind, giveaway_id, user_id) DO NOTHING;
                 """,
-                (giveaway_id, user_id, username_snapshot, points_in_giveaway)
+                (giveaway_id, user_id, username_snapshot, points_in_giveaway, kind)
             )
     finally:
         conn.close()
+
+
+def get_joined_giveaways_for_user(user_id: int) -> list[dict]:
+    """
+    Повертає список всіх розіграшів, де юзер вже бере участь.
+    Формат елемента:
+      { "giveaway_id": int, "kind": "normal" | "promo" }
+    """
+    sql = """
+        SELECT giveaway_id, kind
+        FROM giveaway_players
+        WHERE user_id = %s;
+    """
+
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(sql, (user_id,))
+            rows = cur.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
 
 
 def get_user_giveaway_ids(user_id: int) -> list[int]:
