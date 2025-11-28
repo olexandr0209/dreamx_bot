@@ -252,7 +252,7 @@ class PointsAPI(BaseHTTPRequestHandler):
             try:
                 cards = gdb.get_active_cards()  # список dict з різними kind
                 payload = json.dumps(
-                    {"giveaways": cards},   # "усі карточки розіграшів/анонсів"
+                    {"giveaways": cards},   # усі карточки розіграшів/анонсів
                     default=str             # щоб datetime серіалізувався в строки
                 ).encode("utf-8")
 
@@ -263,6 +263,43 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.wfile.write(payload)
             except Exception as e:
                 logger.exception("get_active_cards error: %s", e)
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"db_error"}')
+            return
+
+        # ✅ НОВЕ: список розіграшів, де юзер вже бере участь
+        if parsed.path == "/api/get_joined_giveaways":
+            params = parse_qs(parsed.query)
+
+            try:
+                user_id = int(params.get("user_id", [0])[0])
+            except (TypeError, ValueError):
+                user_id = 0
+
+            if not user_id:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"no_user_id"}')
+                return
+
+            try:
+                joined_ids = gdb.get_user_giveaway_ids(user_id)
+                payload = json.dumps(
+                    {"joined_giveaway_ids": joined_ids}
+                ).encode("utf-8")
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(payload)
+            except Exception as e:
+                logger.exception("get_joined_giveaways error: %s", e)
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self._set_cors()
@@ -352,7 +389,7 @@ class PointsAPI(BaseHTTPRequestHandler):
             self.wfile.write(result)
             return
 
-        # ✅ Додати участь у розіграші (giveaway_players)
+        # ✅ Участь у звичайному розіграші
         elif parsed.path == "/api/join_giveaway":
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length)
@@ -367,16 +404,11 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.wfile.write(b'{"error":"invalid_json"}')
                 return
 
-            try:
-                user_id = int(payload.get("user_id", 0))
-                giveaway_id = int(payload.get("giveaway_id", 0))
-            except (TypeError, ValueError):
-                user_id = 0
-                giveaway_id = 0
-
+            giveaway_id = int(payload.get("giveaway_id", 0))
+            user_id = int(payload.get("user_id", 0))
             username = payload.get("username") or None
 
-            if not user_id or not giveaway_id:
+            if not giveaway_id or not user_id:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
                 self._set_cors()
@@ -393,6 +425,7 @@ class PointsAPI(BaseHTTPRequestHandler):
                 )
             except Exception as e:
                 logger.exception("join_giveaway error: %s", e)
+                # якщо тут буде дубль, фронт все одно покаже "Ви приєднались"
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json")
                 self._set_cors()
