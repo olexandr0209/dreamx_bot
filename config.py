@@ -1,3 +1,4 @@
+# config.py
 import os
 
 # Який режим зараз: dev чи prod
