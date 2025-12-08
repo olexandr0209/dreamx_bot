@@ -41,3 +41,39 @@ def get_upcoming_tournaments(limit: int = 20):
             return rows
     finally:
         conn.close()
+
+
+# 🔥 alias, який використовує main.py
+def list_upcoming(limit: int = 20):
+    """
+    Те саме, що get_upcoming_tournaments, просто інша назва для main.py.
+    """
+    return get_upcoming_tournaments(limit)
+
+
+def get_tournament_by_id(t_id: int):
+    """
+    Отримати один турнір по id (для /api/get_tournament).
+    """
+    sql = """
+        SELECT
+            id,
+            title,
+            prize,
+            start_dt,
+            status
+        FROM tournaments
+        WHERE id = %s
+        LIMIT 1
+    """
+    conn = _get_conn()
+    try:
+        with conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(sql, (t_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            row["start_at"] = row.pop("start_dt")
+            return row
+    finally:
+        conn.close()
