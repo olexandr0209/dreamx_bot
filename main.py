@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
 import giveaway_db_from_admin as gdb
+import tournaments_client_db as tdb 
 
 from telegram import (
     Update,
@@ -209,9 +210,11 @@ class PointsAPI(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        path = parsed.path
+        params = parse_qs(parsed.query)
 
         # health-check
-        if parsed.path == "/":
+        if path == "/":
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self._set_cors()
@@ -222,9 +225,7 @@ class PointsAPI(BaseHTTPRequestHandler):
         # ======================
         #  GET_POINTS
         # ======================
-        if parsed.path == "/api/get_points":
-            params = parse_qs(parsed.query)
-
+        if path == "/api/get_points":
             try:
                 user_id = int(params.get("user_id", [0])[0])
             except (TypeError, ValueError):
@@ -239,7 +240,6 @@ class PointsAPI(BaseHTTPRequestHandler):
                 return
 
             points = bd.get_points_pg(user_id)
-
             result = json.dumps({"points": points}).encode("utf-8")
 
             self.send_response(200)
@@ -252,7 +252,7 @@ class PointsAPI(BaseHTTPRequestHandler):
         # ======================
         #  GET_GIVEAWAYS (усі картки)
         # ======================
-        if parsed.path == "/api/get_giveaways":
+        if path == "/api/get_giveaways":
             try:
                 cards = gdb.get_active_cards()
                 payload = json.dumps(
@@ -275,11 +275,9 @@ class PointsAPI(BaseHTTPRequestHandler):
             return
 
         # ======================
-        #  🔥 НОВЕ: GET_JOINED_GIVEAWAYS
+        #  🔥 GET_JOINED_GIVEAWAYS
         # ======================
-        if parsed.path == "/api/get_joined_giveaways":
-            params = parse_qs(parsed.query)
-
+        if path == "/api/get_joined_giveaways":
             try:
                 user_id = int(params.get("user_id", [0])[0])
             except (TypeError, ValueError):
@@ -294,10 +292,8 @@ class PointsAPI(BaseHTTPRequestHandler):
                 return
 
             try:
-                # rows: [{ "giveaway_id": 1, "kind": "normal" }, ...]
                 rows = gdb.get_joined_giveaways_for_user(user_id)
 
-                # Стара логіка — тільки normal
                 normal_ids = [
                     r["giveaway_id"]
                     for r in rows
@@ -327,6 +323,79 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(b'{"error":"db_error"}')
                 return
+
+        # ======================
+        #  🔥 НОВЕ: СПИСОК ТУРНІРІВ
+        #  GET /api/get_tournaments
+        # ======================
+        if path == "/api/get_tournaments":
+            try:
+                tournaments = tdb.list_upcoming(limit=20)
+                payload = json.dumps(
+                    {"tournaments": tournaments},
+                    default=str
+                ).encode("utf-8")
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(payload)
+            except Exception as e:
+                logger.exception("get_tournaments error: %s", e)
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"db_error"}')
+            return
+
+        # ======================
+        #  🔥 НОВЕ: ОДИН ТУРНІР
+        #  GET /api/get_tournament?id=123
+        # ======================
+        if path == "/api/get_tournament":
+            try:
+                tid_raw = params.get("id", [None])[0]
+                if tid_raw is None:
+                    raise ValueError("id is required")
+
+                tid = int(tid_raw)
+                tournament = tdb.get_tournament_by_id(tid)
+
+                if not tournament:
+                    self.send_response(404)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self._set_cors()
+                    self.end_headers()
+                    self.wfile.write(b'{"error":"not_found"}')
+                    return
+
+                payload = json.dumps(
+                    {"tournament": tournament},
+                    default=str
+                ).encode("utf-8")
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(payload)
+
+            except ValueError:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"bad_id"}')
+            except Exception as e:
+                logger.exception("get_tournament error: %s", e)
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"db_error"}')
+            return
 
         # 404
         self.send_response(404)
