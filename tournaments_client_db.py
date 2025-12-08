@@ -43,17 +43,16 @@ def get_upcoming_tournaments(limit: int = 20):
         conn.close()
 
 
-# 🔥 alias, який використовує main.py
 def list_upcoming(limit: int = 20):
     """
-    Те саме, що get_upcoming_tournaments, просто інша назва для main.py.
+    Простий alias, щоб API міг викликати tdb.list_upcoming(...)
     """
     return get_upcoming_tournaments(limit)
 
 
-def get_tournament_by_id(t_id: int):
+def get_tournament_by_id(tid: int):
     """
-    Отримати один турнір по id (для /api/get_tournament).
+    Один конкретний турнір по id.
     """
     sql = """
         SELECT
@@ -69,7 +68,7 @@ def get_tournament_by_id(t_id: int):
     conn = _get_conn()
     try:
         with conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(sql, (t_id,))
+            cur.execute(sql, (tid,))
             row = cur.fetchone()
             if not row:
                 return None
