@@ -1,6 +1,7 @@
-# api_server.py
-import json
+# api_server.py — HTTP API для DreamX (points, giveaways, tournaments)
+
 import logging
+import json
 import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -16,18 +17,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class ApiHandler(BaseHTTPRequestHandler):
+class PointsAPI(BaseHTTPRequestHandler):
 
     def _set_cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 
-    # -------- HEAD / OPTIONS --------
-
     def do_HEAD(self):
         self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Type", "text/plain")
         self._set_cors()
         self.end_headers()
 
@@ -35,8 +34,6 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self._set_cors()
         self.end_headers()
-
-    # ----------------- GET -----------------
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -49,10 +46,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self._set_cors()
             self.end_headers()
-            self.wfile.write(b"DreamX API running")
+            self.wfile.write(b"API is running")
             return
 
-        # ---- /api/get_points ----
+        # =============== GET_POINTS ==================
         if path == "/api/get_points":
             try:
                 user_id = int(params.get("user_id", [0])[0])
@@ -60,24 +57,47 @@ class ApiHandler(BaseHTTPRequestHandler):
                 user_id = 0
 
             if not user_id:
-                self._json_error(400, "no_user_id")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"no_user_id"}')
                 return
 
             points = bd.get_points_pg(user_id)
-            self._json_ok({"points": points})
+            result = json.dumps({"points": points}).encode("utf-8")
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._set_cors()
+            self.end_headers()
+            self.wfile.write(result)
             return
 
-        # ---- /api/get_giveaways ----
+        # =============== GET_GIVEAWAYS ==================
         if path == "/api/get_giveaways":
             try:
                 cards = gdb.get_active_cards()
-                self._json_ok({"giveaways": cards})
+                payload = json.dumps(
+                    {"giveaways": cards},
+                    default=str
+                ).encode("utf-8")
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(payload)
             except Exception as e:
                 logger.exception("get_active_cards error: %s", e)
-                self._json_error(500, "db_error")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"db_error"}')
             return
 
-        # ---- /api/get_joined_giveaways ----
+        # =============== GET_JOINED_GIVEAWAYS ==================
         if path == "/api/get_joined_giveaways":
             try:
                 user_id = int(params.get("user_id", [0])[0])
@@ -85,7 +105,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                 user_id = 0
 
             if not user_id:
-                self._json_error(400, "no_user_id")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"no_user_id"}')
                 return
 
             try:
@@ -97,28 +121,54 @@ class ApiHandler(BaseHTTPRequestHandler):
                     if r.get("kind") == "normal"
                 ]
 
-                self._json_ok(
+                payload = json.dumps(
                     {
                         "joined": rows,
-                        "joined_giveaway_ids": normal_ids,
-                    }
-                )
+                        "joined_giveaway_ids": normal_ids
+                    },
+                    default=str
+                ).encode("utf-8")
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+
             except Exception as e:
                 logger.exception("get_joined_giveaways error: %s", e)
-                self._json_error(500, "db_error")
-            return
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"db_error"}')
+                return
 
-        # ---- /api/get_tournaments ----
+        # =============== GET_TOURNAMENTS ==================
         if path == "/api/get_tournaments":
             try:
-                tournaments = tdb.list_upcoming(limit=20)
-                self._json_ok({"tournaments": tournaments})
+                tournaments = tdb.get_upcoming_tournaments(limit=20)
+                payload = json.dumps(
+                    {"tournaments": tournaments},
+                    default=str
+                ).encode("utf-8")
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(payload)
             except Exception as e:
                 logger.exception("get_tournaments error: %s", e)
-                self._json_error(500, "db_error")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"db_error"}')
             return
 
-        # ---- /api/get_tournament?id=... ----
+        # =============== GET_TOURNAMENT (one) ==================
         if path == "/api/get_tournament":
             try:
                 tid_raw = params.get("id", [None])[0]
@@ -129,65 +179,138 @@ class ApiHandler(BaseHTTPRequestHandler):
                 tournament = tdb.get_tournament_by_id(tid)
 
                 if not tournament:
-                    self._json_error(404, "not_found")
+                    self.send_response(404)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self._set_cors()
+                    self.end_headers()
+                    self.wfile.write(b'{"error":"not_found"}')
                     return
 
-                self._json_ok({"tournament": tournament})
+                payload = json.dumps(
+                    {"tournament": tournament},
+                    default=str
+                ).encode("utf-8")
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(payload)
+
             except ValueError:
-                self._json_error(400, "bad_id")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"bad_id"}')
             except Exception as e:
                 logger.exception("get_tournament error: %s", e)
-                self._json_error(500, "db_error")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"db_error"}')
             return
 
         # 404
         self.send_response(404)
         self._set_cors()
         self.end_headers()
-        self.wfile.write(b"Not Found")
 
-    # ----------------- POST -----------------
-
+    # =====================================================
+    #                   POST
+    # =====================================================
     def do_POST(self):
         parsed = urlparse(self.path)
-        path = parsed.path
 
-        # ---- helper для читання JSON ----
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length) if length > 0 else b"{}"
-        try:
-            payload = json.loads(body.decode("utf-8"))
-        except json.JSONDecodeError:
-            self._json_error(400, "invalid_json")
-            return
+        # =============== ADD_POINTS ==================
+        if parsed.path == "/api/add_points":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
 
-        # ---- /api/add_points ----
-        if path == "/api/add_points":
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"invalid_json"}')
+                return
+
             user_id = int(payload.get("user_id", 0))
             delta = int(payload.get("delta", 0))
 
             if not user_id or delta == 0:
-                self._json_error(400, "bad_parameters")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"bad_parameters"}')
                 return
 
             new_points = bd.add_points_and_return(user_id, delta)
-            self._json_ok({"ok": True, "points": new_points})
+
+            result = json.dumps({"ok": True, "points": new_points}).encode("utf-8")
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._set_cors()
+            self.end_headers()
+            self.wfile.write(result)
             return
 
-        # ---- /api/ensure_user ----
-        if path == "/api/ensure_user":
+        # =============== ENSURE_USER ==================
+        if parsed.path == "/api/ensure_user":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"invalid_json"}')
+                return
+
             user_id = int(payload.get("user_id", 0))
 
             if not user_id:
-                self._json_error(400, "no_user_id")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"no_user_id"}')
                 return
 
             bd.ensure_user_pg(user_id, None, None)
-            self._json_ok({"ok": True})
+
+            result = json.dumps({"ok": True}).encode("utf-8")
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._set_cors()
+            self.end_headers()
+            self.wfile.write(result)
             return
 
-        # ---- /api/join_giveaway ----
-        if path == "/api/join_giveaway":
+        # =============== JOIN_GIVEAWAY ==================
+        if parsed.path == "/api/join_giveaway":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"invalid_json"}')
+                return
+
             kind = payload.get("kind", "normal")
 
             try:
@@ -200,7 +323,11 @@ class ApiHandler(BaseHTTPRequestHandler):
             username = payload.get("username") or None
 
             if not giveaway_id or not user_id:
-                self._json_error(400, "bad_parameters")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"bad_parameters"}')
                 return
 
             try:
@@ -211,46 +338,38 @@ class ApiHandler(BaseHTTPRequestHandler):
                     points_in_giveaway=1,
                     kind=kind,
                 )
-                self._json_ok({"ok": True})
+
+                result = json.dumps({"ok": True}).encode("utf-8")
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(result)
+                return
+
             except Exception as e:
                 logger.exception("join_giveaway error: %s", e)
-                self._json_error(500, "db_error")
-            return
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"db_error"}')
+                return
 
         # 404
         self.send_response(404)
         self._set_cors()
         self.end_headers()
-        self.wfile.write(b"Not Found")
-
-    # ----------------- helpers -----------------
-
-    def _json_ok(self, data: dict):
-        payload = json.dumps(data, default=str).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self._set_cors()
-        self.end_headers()
-        self.wfile.write(payload)
-
-    def _json_error(self, status: int, code: str):
-        payload = json.dumps({"error": code}).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self._set_cors()
-        self.end_headers()
-        self.wfile.write(payload)
 
 
 def run_api():
-    # ініціалізувати БД на всяк випадок
-    bd.init_pg_db()
-
     port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), ApiHandler)
-    print(f"DreamX API server running on port {port}...")
+    server = HTTPServer(("0.0.0.0", port), PointsAPI)
+    print(f"API server running on port {port}...")
     server.serve_forever()
 
 
 if __name__ == "__main__":
+    bd.init_pg_db()
     run_api()
