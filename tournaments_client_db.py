@@ -3,7 +3,7 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-from config import DATABASE_URL   # як у bd.py / giveaway_db_from_admin.py
+from config import DATABASE_URL   # той самий, що в bd.py / giveaway_db_from_admin.py
 
 
 if not DATABASE_URL:
@@ -43,16 +43,9 @@ def get_upcoming_tournaments(limit: int = 20):
         conn.close()
 
 
-def list_upcoming(limit: int = 20):
-    """
-    Простий alias, щоб API міг викликати tdb.list_upcoming(...)
-    """
-    return get_upcoming_tournaments(limit)
-
-
 def get_tournament_by_id(tid: int):
     """
-    Один конкретний турнір по id.
+    Один турнір по id.
     """
     sql = """
         SELECT
@@ -63,16 +56,14 @@ def get_tournament_by_id(tid: int):
             status
         FROM tournaments
         WHERE id = %s
-        LIMIT 1
     """
     conn = _get_conn()
     try:
         with conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(sql, (tid,))
             row = cur.fetchone()
-            if not row:
-                return None
-            row["start_at"] = row.pop("start_dt")
+            if row:
+                row["start_at"] = row.pop("start_dt")
             return row
     finally:
         conn.close()
