@@ -16,7 +16,7 @@ from telegram.ext import (
 
 import bd
 import giveaway_db_from_admin as gdb
-from config import BOT_TOKEN, WEBAPP_URL
+from config import BOT_TOKEN, WEBAPP_URL  # <-- беремо звідси
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -24,15 +24,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ADMIN_IDS = [929619425]  # твій Telegram ID, додай інші при потребі
+ADMIN_IDS = [929619425]
 
 
 # =========================
-#   TELEGRAM BOT HANDLERS
+#   HANDLERS
 # =========================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    logger.info("Got /start from %s (%s)", user.id, user.username)
 
     bd.ensure_user_pg(
         user_id=user.id,
@@ -40,19 +41,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         first_name=user.first_name
     )
 
-    # 🔥 та ж логіка, що й для гри
     points = bd.get_points_pg(user.id)
-
     url_with_points = f"{WEBAPP_URL}?user_id={user.id}&points={points}"
 
-    keyboard = [
-        [
-            KeyboardButton(
-                text="🚀 Open DreamX App",
-                web_app=WebAppInfo(url=url_with_points),
-            )
-        ]
-    ]
+    keyboard = [[
+        KeyboardButton(
+            text="🚀 Open DreamX App",
+            web_app=WebAppInfo(url=url_with_points),
+        )
+    ]]
 
     reply_kb = ReplyKeyboardMarkup(
         keyboard,
@@ -71,22 +68,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def mypoints(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     points = bd.get_points_pg(user.id)
-
-    await update.message.reply_text(
-        f"У тебе зараз {points} балів 🔥"
-    )
+    await update.message.reply_text(f"У тебе зараз {points} балів 🔥")
 
 
 async def pm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    /pm <user_id> <текст>
-
-    Приклад:
-    /pm 123456789 Вітаю, ти виграв у DreamX! 🎉
-    """
     user = update.effective_user
 
-    # 🔒 тільки адміни можуть користуватись цією командою
     if user.id not in ADMIN_IDS:
         await update.message.reply_text("У тебе немає прав використовувати цю команду.")
         return
@@ -107,7 +94,6 @@ async def pm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text = " ".join(context.args[1:])
-
     try:
         await context.bot.send_message(chat_id=target_user_id, text=text)
         await update.message.reply_text("Повідомлення надіслано ✅")
@@ -120,10 +106,6 @@ async def pm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def test_giveaways(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Тест: показати активні розіграші та оголошення,
-    які бачить ігровий бот із загальної БД.
-    """
     user = update.effective_user
 
     giveaways = gdb.get_active_giveaways()
@@ -138,7 +120,8 @@ async def test_giveaways(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for g in giveaways:
             lines.append(
                 f"- `#{g['id']}` {g['title']} — приз: *{g['prize']}* "
-                f"(до {g['prize_count']} переможців), до {g['end_at']:%d.%m %H:%M}"
+                f"(до {g['prize_count']} переможців), "
+                f"до {g['end_at']:%d.%m %H:%M}"
             )
         lines.append("")
     else:
@@ -165,26 +148,18 @@ async def test_giveaways(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append("Немає активних оголошень.")
 
     text = "\n".join(lines)
-
-    await update.message.reply_text(
-        text,
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 
 if __name__ == "__main__":
-    # 1. Створюємо таблиці, якщо їх ще нема
     bd.init_pg_db()
 
-    # 2. Telegram app
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # 3. Команди
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("mypoints", mypoints))
     app.add_handler(CommandHandler("pm", pm_command))
     app.add_handler(CommandHandler("test_giveaways", test_giveaways))
 
-    # 4. Запускаємо бота
     print("Bot is running (BOT ONLY)...")
     app.run_polling()
