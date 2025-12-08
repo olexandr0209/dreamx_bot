@@ -3,56 +3,41 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+from config import DATABASE_URL   # як у bd.py / giveaway_db_from_admin.py
+
+
 if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL не знайдено у змінних середовища")
+    raise RuntimeError("DATABASE_URL not set")
+
 
 def _get_conn():
-    return psycopg2.connect(
-        DATABASE_URL,
-        sslmode=os.getenv("PG_SSLMODE", "require")
-    )
+    return psycopg2.connect(DATABASE_URL, sslmode=os.getenv("PG_SSLMODE", "require"))
 
-def list_upcoming(limit: int = 20):
+
+def get_upcoming_tournaments(limit: int = 20):
     """
-    Повертає список найближчих турнірів.
-    ⚠️ Назви колонок підженеш під свою таблицю tournaments.
+    Повертає заплановані турніри для WebApp.
     """
     sql = """
         SELECT
             id,
             title,
-            starts_at,
-            host_username,
-            players_total,
-            players_left,
-            status,
-            description
+            prize,
+            start_dt,
+            status
         FROM tournaments
-        WHERE status IN ('scheduled', 'active')
-        ORDER BY starts_at ASC
+        WHERE status = 'scheduled'
+        ORDER BY start_dt ASC
         LIMIT %s
     """
-    with _get_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute(sql, (limit,))
-        return cur.fetchall()
-
-def get_tournament_by_id(tournament_id: int):
-    sql = """
-        SELECT
-            id,
-            title,
-            starts_at,
-            host_username,
-            players_total,
-            players_left,
-            status,
-            description
-        FROM tournaments
-        WHERE id = %s
-        LIMIT 1
-    """
-    with _get_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute(sql, (tournament_id,))
-        row = cur.fetchone()
-        return row
+    conn = _get_conn()
+    try:
+        with conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(sql, (limit,))
+            rows = cur.fetchall()
+            # перейменуємо start_dt -> start_at для фронта
+            for r in rows:
+                r["start_at"] = r.pop("start_dt")
+            return rows
+    finally:
+        conn.close()
