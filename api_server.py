@@ -9,6 +9,7 @@ from urllib.parse import urlparse, parse_qs
 import bd
 import giveaway_db_from_admin as gdb
 import tournaments_client_db as tdb
+import tournaments_game_db as tgame  # <--- ДОДАНО
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -213,6 +214,45 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.wfile.write(b'{"error":"db_error"}')
             return
 
+        # =============== GET_NEXT_MATCH (турнір) ==================
+        if path == "/api/get_next_match":
+            try:
+                tournament_id = int(params.get("tournament_id", [0])[0])
+                user_id = int(params.get("user_id", [0])[0])
+            except (TypeError, ValueError):
+                tournament_id = 0
+                user_id = 0
+
+            if not tournament_id or not user_id:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"bad_parameters"}')
+                return
+
+            try:
+                match = tgame.get_next_match_for_player(tournament_id, user_id)
+                payload = json.dumps(
+                    {"match": match},
+                    default=str
+                ).encode("utf-8")
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+            except Exception as e:
+                logger.exception("get_next_match error: %s", e)
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"db_error"}')
+                return
+
         # 404
         self.send_response(404)
         self._set_cors()
@@ -351,6 +391,126 @@ class PointsAPI(BaseHTTPRequestHandler):
 
             except Exception as e:
                 logger.exception("join_giveaway error: %s", e)
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"db_error"}')
+                return
+
+        # =============== JOIN_TOURNAMENT ==================
+        if parsed.path == "/api/join_tournament":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"invalid_json"}')
+                return
+
+            try:
+                tournament_id = int(payload.get("tournament_id", 0))
+                user_id = int(payload.get("user_id", 0))
+            except Exception:
+                tournament_id = 0
+                user_id = 0
+
+            if not tournament_id or not user_id:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"bad_parameters"}')
+                return
+
+            try:
+                row = tgame.register_player(tournament_id, user_id)
+                resp = json.dumps(
+                    {"ok": True, "tournament_player": row},
+                    default=str
+                ).encode("utf-8")
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(resp)
+                return
+
+            except Exception as e:
+                logger.exception("join_tournament error: %s", e)
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"db_error"}')
+                return
+
+        # =============== SUBMIT_MOVE (RPS) ==================
+        if parsed.path == "/api/submit_move":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"invalid_json"}')
+                return
+
+            try:
+                tournament_id = int(payload.get("tournament_id", 0))
+                user_id = int(payload.get("user_id", 0))
+                match_id = int(payload.get("match_id", 0))
+                move = str(payload.get("move", "")).lower()
+            except Exception:
+                tournament_id = 0
+                user_id = 0
+                match_id = 0
+                move = ""
+
+            if not tournament_id or not user_id or not match_id or not move:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"error":"bad_parameters"}')
+                return
+
+            try:
+                result = tgame.submit_move(tournament_id, match_id, user_id, move)
+                payload = json.dumps(
+                    {"ok": True, "result": result},
+                    default=str
+               ).encode("utf-8")
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+
+            except ValueError as ve:
+                logger.warning("submit_move logical error: %s", ve)
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                msg = json.dumps({"error": str(ve)}).encode("utf-8")
+                self.wfile.write(msg)
+                return
+
+            except Exception as e:
+                logger.exception("submit_move error: %s", e)
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json")
                 self._set_cors()
