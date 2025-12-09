@@ -53,7 +53,8 @@ def get_tournament_by_id(tid: int):
             title,
             prize,
             start_dt,
-            status
+            status,
+            host_username
         FROM tournaments
         WHERE id = %s
     """
