@@ -17,6 +17,7 @@ from telegram.ext import (
 import bd
 import giveaway_db_from_admin as gdb
 from config import BOT_TOKEN, WEBAPP_URL  # <-- беремо звідси
+from one_vs_one_db import init_one_vs_one_tables
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -153,6 +154,7 @@ async def test_giveaways(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 if __name__ == "__main__":
     bd.init_pg_db()
+    init_one_vs_one_tables() 
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
