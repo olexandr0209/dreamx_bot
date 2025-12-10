@@ -1,4 +1,4 @@
-# api_server.py — HTTP API для DreamX (points, giveaways, tournaments)
+# api_server.py — HTTP API для DreamX (points, giveaways, tournaments, 1vs1)
 
 import logging
 import json
@@ -252,6 +252,42 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(b'{"error":"db_error"}')
                 return
+
+        # =============== 1VS1: STATE ==================
+        if path == "/api/one_vs_one/state":
+            try:
+                room_id = int(params.get("room_id", [0])[0])
+            except (TypeError, ValueError):
+                room_id = 0
+
+            try:
+                user_id = int(params.get("user_id", [0])[0])
+            except (TypeError, ValueError):
+                user_id = None
+
+            if not room_id:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"ok": false, "error": "no_room_id"}')
+                return
+
+            from one_vs_one_logic import get_room_state
+
+            try:
+                resp = get_room_state(room_id, user_id)
+                out = json.dumps({"ok": True, "data": resp}, default=str).encode("utf-8")
+            except Exception as e:
+                logger.exception("one_vs_one state error: %s", e)
+                out = json.dumps({"ok": False, "error": str(e)}).encode("utf-8")
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self._set_cors()
+            self.end_headers()
+            self.wfile.write(out)
+            return
 
         # 404
         self.send_response(404)
@@ -517,6 +553,104 @@ class PointsAPI(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(b'{"error":"db_error"}')
                 return
+
+        # =============== 1VS1: JOIN ==================
+        if parsed.path == "/api/one_vs_one/join":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"ok": false, "error": "invalid_json"}')
+                return
+
+            try:
+                user_id = int(payload.get("user_id", 0))
+            except (TypeError, ValueError):
+                user_id = 0
+
+            username = payload.get("username")
+
+            if not user_id:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"ok": false, "error": "no_user_id"}')
+                return
+
+            from one_vs_one_logic import join_one_vs_one
+
+            try:
+                resp = join_one_vs_one(user_id, username)
+                out = json.dumps({"ok": True, "data": resp}, default=str).encode("utf-8")
+            except Exception as e:
+                logger.exception("one_vs_one join error: %s", e)
+                out = json.dumps({"ok": False, "error": str(e)}).encode("utf-8")
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._set_cors()
+            self.end_headers()
+            self.wfile.write(out)
+            return
+
+        # =============== 1VS1: MOVE ==================
+        if parsed.path == "/api/one_vs_one/move":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"ok": false, "error": "invalid_json"}')
+                return
+
+            try:
+                room_id = int(payload.get("room_id", 0))
+                user_id = int(payload.get("user_id", 0))
+                round_index = int(payload.get("round_index", 1))
+                game_index = int(payload.get("game_index", 0))
+                choice = str(payload.get("choice", "")).lower()
+            except Exception:
+                room_id = 0
+                user_id = 0
+                round_index = 1
+                game_index = 0
+                choice = ""
+
+            if not room_id or not user_id or not choice:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors()
+                self.end_headers()
+                self.wfile.write(b'{"ok": false, "error": "bad_parameters"}')
+                return
+
+            from one_vs_one_logic import make_move
+
+            try:
+                resp = make_move(room_id, user_id, round_index, game_index, choice)
+                out = json.dumps({"ok": True, "data": resp}, default=str).encode("utf-8")
+            except Exception as e:
+                logger.exception("one_vs_one move error: %s", e)
+                out = json.dumps({"ok": False, "error": str(e)}).encode("utf-8")
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._set_cors()
+            self.end_headers()
+            self.wfile.write(out)
+            return
 
         # 404
         self.send_response(404)
